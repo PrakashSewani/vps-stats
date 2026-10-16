@@ -1,0 +1,27 @@
+[Unit]
+Description=Sample VPS and Mac telemetry for the vps-stats page
+Documentation=https://github.com/PrakashSewani/vps-stats
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vpsstats
+Group=vpsstats
+Environment=HOME=/var/lib/vps-stats
+ExecStart=/usr/bin/python3 /opt/vps-stats/exporter/stats.py --state-dir /var/lib/vps-stats
+
+# Guardrails for a 1-vCPU, 3.8 GB box that must stay quiet. The exporter waits on an ssh round
+# trip rather than burning CPU, so these are caps we do not expect to reach: deprioritise the
+# tick and bound its slice so a stuck probe can never disturb the machine.
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=128M
+
+# No [Install] section on purpose. The timer owns the schedule, and enabling this unit directly
+# would run it once at boot with no cadence. Enable vps-stats.timer instead.
+#
+# Measured expectation: a tick costs tens of milliseconds of CPU — the ssh round trip is
+# waiting, not computing. A tick whose Mac probe is slow stretches the *next* tick rather than
+# stacking a second copy, because systemd serialises starts of the same unit.

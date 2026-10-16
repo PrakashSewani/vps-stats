@@ -1,0 +1,17 @@
+[Unit]
+Description=Run vps-stats.service every 15 seconds
+Documentation=https://github.com/PrakashSewani/vps-stats
+
+[Timer]
+# 15 s is the resolution the page's 30-minute ring is labelled with, so the history and the
+# display agree. OnBootSec delays the first tick by 30 s so we do not probe the Mac the instant
+# the box comes up.
+OnBootSec=30s
+OnUnitActiveSec=15s
+# AccuracySec=1s keeps that cadence honest. The default (1 min) lets systemd coalesce timer
+# wakeups, which would smear a 15 s interval into an unpredictably lumpy one.
+AccuracySec=1s
+Unit=vps-stats.service
+
+[Install]
+WantedBy=timers.target
