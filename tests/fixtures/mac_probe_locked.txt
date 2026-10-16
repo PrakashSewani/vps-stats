@@ -1,0 +1,62 @@
+HOST=Prakash’s MacBook Air
+MODEL=Apple M3
+CORES=8
+TOTAL=17179869184
+BOOTTIME={ sec = 1792164069, usec = 207031 } Fri Oct 16 20:51:09 2026
+LOAD={ 1.79 1.73 1.68 }
+LOCKED=1
+SWAP=total = 0.00M  used = 0.00M  free = 0.00M  (encrypted)
+--- TOP ---
+Processes: 740 total, 2 running, 738 sleeping, 2815 threads 
+2026/10/16 22:50:04
+Load Avg: 1.79, 1.73, 1.68 
+CPU usage: 1.16% user, 11.62% sys, 87.20% idle 
+SharedLibs: 1063M resident, 230M data, 209M linkedit.
+MemRegions: 117986 total, 3082M resident, 533M private, 2265M shared.
+PhysMem: 14G used (2022M wired, 601M compressor), 1306M unused.
+VM: 340T vsize, 57G framework vsize, 0(0) swapins, 0(0) swapouts.
+Networks: packets: 897508/1062M in, 403252/112M out.
+Disks: 534453/17G read, 322965/6395M written.
+
+
+Processes: 740 total, 3 running, 737 sleeping, 2813 threads 
+2026/10/16 22:50:05
+Load Avg: 1.79, 1.73, 1.68 
+CPU usage: 1.58% user, 3.74% sys, 94.66% idle 
+SharedLibs: 1063M resident, 230M data, 209M linkedit.
+MemRegions: 0 total, 0B resident, 533M private, 2265M shared.
+PhysMem: 14G used (2022M wired, 601M compressor), 1312M unused.
+VM: 340T vsize, 57G framework vsize, 0(0) swapins, 0(0) swapouts.
+Networks: packets: 897511/1062M in, 403256/112M out.
+Disks: 534455/17G read, 322965/6395M written.
+
+
+--- VMSTAT ---
+Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                    82478.
+Pages active:                                 381086.
+Pages inactive:                               379055.
+Pages speculative:                              1681.
+Pages throttled:                                   0.
+Pages wired down:                             129402.
+Pages purgeable:                               36094.
+"Translation faults":                       32501301.
+Pages copy-on-write:                         4835216.
+Pages zero filled:                          15607419.
+Pages reactivated:                            387729.
+Pages purged:                                  83194.
+File-backed pages:                            374848.
+Anonymous pages:                              386974.
+Pages stored in compressor:                   114368.
+Pages occupied by compressor:                  38483.
+Decompressions:                                69035.
+Compressions:                                 244079.
+Pageins:                                     1093111.
+Pageouts:                                        121.
+Swapins:                                           0.
+Swapouts:                                          0.
+--- DF ---
+Filesystem     1024-blocks     Used Available Capacity iused      ifree %iused  Mounted on
+/dev/disk3s5     239362496 42418428 170144448    20%  549778 1701444480    0%   /System/Volumes/Data
+/dev/disk3s1s1   239362496 13314968 170144448     8%  485901 1701444480    0%   /
+--- END ---

@@ -387,10 +387,31 @@ else
   check "frozen document ages past the 90 s red line" "age ${frozen_age} s" test "$age_ok" -eq 1
 
   curl -s --max-time 5 "$PAGE" -o "$SCRATCH/page.html" 2>/dev/null || true
+  # The page's age maths is the thing that must not regress, and `grep -q 'Date.now()'` cannot
+  # detect its regression: Date.now() also appears in the degraded no-Date-header path and in
+  # the 1 s re-render, so deleting the server-clock anchor outright left the check green while
+  # the original false-green failure came straight back. So run the page's own unit tests when
+  # node is available, and otherwise require both halves of the anchor wiring — and say which
+  # of the two ran, because the grep is the weaker check.
   clock_ok=0
-  grep -q 'Date\.now()' "$SCRATCH/page.html" && clock_ok=1
-  check "page ages its own numbers" \
-    "Date.now() $([[ "$clock_ok" -eq 1 ]] && printf present || printf missing)" \
+  clock_observed=""
+  page_test_path="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/tests/test_page.mjs"
+  if command -v node >/dev/null 2>&1 && [[ -f "$page_test_path" ]]; then
+    if page_test_out="$(node "$page_test_path" 2>&1)"; then
+      clock_ok=1
+      clock_observed="node tests/test_page.mjs -> $(printf '%s' "$page_test_out" | tail -n1)"
+    else
+      clock_observed="node tests/test_page.mjs failed -> $(printf '%s' "$page_test_out" | tail -n1)"
+    fi
+  else
+    anchor_reads=0
+    anchor_uses=0
+    grep -q "headers.get('date')" "$SCRATCH/page.html" && anchor_reads=1
+    grep -q 'ageAnchor.serverEpoch' "$SCRATCH/page.html" && anchor_uses=1
+    [[ "$anchor_reads" -eq 1 && "$anchor_uses" -eq 1 ]] && clock_ok=1
+    clock_observed="grep fallback (no node): Date header read=$anchor_reads, anchor used=$anchor_uses"
+  fi
+  check "page ages its own numbers from the server clock" "$clock_observed" \
     test "$clock_ok" -eq 1
 
   systemctl start vps-stats.timer 2>/dev/null || true

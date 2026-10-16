@@ -24,6 +24,7 @@ cd vps-stats
 | Command | What it does |
 |---|---|
 | `python3 tests/test_exporter.py` | The check: runs the stdlib `unittest` suite and exits 0 on success. |
+| `node tests/test_page.mjs` | The page's age maths (`agedSince`, `formatAge`, `hostState`) run against `web/index.html` itself, with no browser. Needs node; it is the only check that fails if the server-clock anchor goes away, so the smoke test runs it when node is on the box. |
 | `bash -n deploy/install.sh && bash -n deploy/smoke.sh` | Syntax check for the two shell scripts. |
 | `python3 exporter/stats.py --state-dir /tmp/vps-stats-test --no-mac --print --json` | Local dry run against a throwaway state directory; prints the whole document. |
 | `python3 exporter/stats.py --version` | Prints `stats.py <version>` and exits 0. |

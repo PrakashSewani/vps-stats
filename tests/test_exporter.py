@@ -40,6 +40,7 @@ def fixture_text(name: str) -> str:
 def make_proc(directory: Path, stat_fixture: str = "proc_stat_a.txt") -> None:
     shutil.copyfile(str(FIXTURES / stat_fixture), str(directory / "stat"))
     shutil.copyfile(str(FIXTURES / "proc_meminfo.txt"), str(directory / "meminfo"))
+    shutil.copyfile(str(FIXTURES / "proc_loadavg.txt"), str(directory / "loadavg"))
     (directory / "uptime").write_text("130000.00 0.00\n", encoding="utf-8")
 
 
@@ -56,9 +57,69 @@ class ExporterTests(unittest.TestCase):
             pair_b = stats.read_cpu_times(second)
         self.assertEqual((13103469, 12440338), pair_a)
         self.assertEqual((13105056, 12441790), pair_b)
-        delta = stats.cpu_busy_pct(pair_b, pair_a)
+        # The two snapshots are 16 s apart, so the caller declares a 16 s window and the delta
+        # is the right number for it.
+        delta = stats.cpu_busy_pct(pair_b, pair_a, 16)
         self.assertEqual(8.5, delta)
+        # With no window to declare, the delta is not a measurement: lifetime average.
         self.assertNotEqual(stats.cpu_busy_pct(pair_b), delta)
+
+    def test_short_delta_window_reports_the_lifetime_average(self) -> None:
+        # A tick that outruns its interval makes systemd fire the next one immediately, so two
+        # samples land a fraction of a second apart and the sampler's own interpreter start-up
+        # is most of the window. Measured on this box while it was 5.6% busy: four back-to-back
+        # ticks reported 100.0 / 100.0 / 91.7 / 100.0. The pair below is the recorded snapshot
+        # with ~0.12 s of ticks (12 at ~99/s) removed, which reproduces that shape.
+        pair_b = (13105056, 12441790)
+        near = (pair_b[0] - 12, pair_b[1] - 1)
+        self.assertEqual(91.7, stats.cpu_busy_pct(pair_b, near, 16))
+        self.assertEqual(5.1, stats.cpu_busy_pct(pair_b, near, 0.12))
+        # Refused, so the answer is exactly the no-pair answer.
+        self.assertEqual(stats.cpu_busy_pct(pair_b), stats.cpu_busy_pct(pair_b, near, 0.12))
+        self.assertEqual(stats.cpu_busy_pct(pair_b), stats.cpu_busy_pct(pair_b, near, None))
+        self.assertEqual(stats.cpu_busy_pct(pair_b), stats.cpu_busy_pct(pair_b, near, 4.9))
+
+    def test_a_bunched_tick_uses_the_lifetime_average(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            proc = root / "proc"
+            state = root / "state"
+            proc.mkdir()
+            make_proc(proc, "proc_stat_a.txt")
+            stats.run_tick(str(state), str(proc), no_mac=True, now=1000)
+            shutil.copyfile(str(FIXTURES / "proc_stat_b.txt"), str(proc / "stat"))
+            bunched = stats.run_tick(str(state), str(proc), no_mac=True, now=1001)
+            # One second is below the floor, so the recorded pair is not trusted over that
+            # window (the measured bunching window was 0.12 s; same code path).
+            self.assertEqual(
+                stats.cpu_busy_pct(stats.read_cpu_times(str(proc))),
+                bunched["hosts"]["vps"]["cpu"]["busy_pct"],
+            )
+            stored = json.loads((state / "prev.json").read_text(encoding="utf-8"))
+            # Without the tick time in prev.json the next tick cannot tell a 15 s window from a
+            # 0.1 s one, so the state file has to carry it.
+            self.assertEqual(1001, stored["at"])
+            self.assertIn("total", stored)
+            self.assertIn("idle", stored)
+
+    def test_previous_file_without_a_tick_time_falls_back(self) -> None:
+        # A prev.json written before the window was recorded cannot measure one, so the first
+        # tick after an upgrade reports the lifetime average. Self-healing: the next tick writes
+        # a complete record and the delta resumes.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            proc = root / "proc"
+            state = root / "state"
+            proc.mkdir()
+            state.mkdir()
+            make_proc(proc, "proc_stat_a.txt")
+            pair_b = (13105056, 12441790)
+            stats.write_json_atomic(state / "prev.json", {"total": pair_b[0], "idle": pair_b[1]})
+            shutil.copyfile(str(FIXTURES / "proc_stat_b.txt"), str(proc / "stat"))
+            tick = stats.run_tick(str(state), str(proc), no_mac=True, now=1016)
+            self.assertEqual(
+                stats.cpu_busy_pct(pair_b), tick["hosts"]["vps"]["cpu"]["busy_pct"]
+            )
 
     def test_first_run_falls_back_then_second_run_uses_delta(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -193,6 +254,39 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual(2.69, parsed["load"]["1m"])
         self.assertEqual("unlocked", parsed["screen"])
         self.assertIn("\u2019", parsed["name"])
+
+    def test_mac_parser_reads_the_real_lock_flag_not_the_console_owner(self) -> None:
+        # Recorded from the Mac while its screen was locked (mac_probe_locked.txt). The console
+        # still belongs to prakashsewani in that state — macOS only hands /dev/console to
+        # loginwindow at logout — so the console owner reads "unlocked" for a locked Mac. The
+        # flag is the answer, and this is the assertion the old parse would have failed.
+        locked_text = fixture_text("mac_probe_locked.txt")
+        self.assertIn("LOCKED=1", locked_text)
+        self.assertEqual("locked", stats.parse_mac_probe(locked_text)["screen"])
+        # Unlocked: the ioreg key is absent (or No), and the probe reports 0 for it.
+        self.assertEqual(
+            "unlocked", stats.parse_mac_probe(locked_text.replace("LOCKED=1", "LOCKED=0"))["screen"]
+        )
+        # An older probe, recorded before the flag existed, carries no LOCKED line at all.
+        # macOS omits the key entirely when the screen is not locked, so absent means unlocked.
+        raw_text = fixture_text("mac_probe_raw.txt")
+        self.assertNotIn("LOCKED=", raw_text)
+        self.assertEqual("unlocked", stats.parse_mac_probe(raw_text)["screen"])
+
+    def test_load_average_comes_from_the_proc_fixture(self) -> None:
+        # proc_loadavg.txt is a real /proc/loadavg snapshot, and --proc-dir now reads it: the
+        # fixture is exercised instead of being recorded and ignored, which also makes the load
+        # path testable off-host.
+        with tempfile.TemporaryDirectory() as temporary:
+            proc = Path(temporary)
+            make_proc(proc, "proc_stat_a.txt")
+            self.assertEqual((0.61, 0.62, 0.54), stats.read_loadavg(str(proc)))
+            sample = stats.sample_vps(str(proc))[0]
+            # No loadavg in the proc directory (a stripped-down fixture set) falls back to the
+            # host's own numbers rather than failing the tick.
+            os.unlink(str(proc / "loadavg"))
+            self.assertEqual(os.getloadavg(), stats.read_loadavg(str(proc)))
+        self.assertEqual({"1m": 0.61, "5m": 0.62, "15m": 0.54}, sample["load"])
 
     def test_asleep_and_malformed_mac_are_reported_states(self) -> None:
         def asleep(*args: Any, **kwargs: Any) -> FakeResult:

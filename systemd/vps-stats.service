@@ -23,5 +23,6 @@ MemoryMax=128M
 # would run it once at boot with no cadence. Enable vps-stats.timer instead.
 #
 # Measured expectation: a tick costs tens of milliseconds of CPU — the ssh round trip is
-# waiting, not computing. A tick whose Mac probe is slow stretches the *next* tick rather than
-# stacking a second copy, because systemd serialises starts of the same unit.
+# waiting, not computing. systemd serialises starts of the same unit, so a second copy never
+# stacks behind a slow tick; the timer re-arms from the *end* of the tick (OnUnitInactiveSec in
+# vps-stats.timer), which is what keeps a slow probe from bunching two ticks into one window.

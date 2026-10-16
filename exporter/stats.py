@@ -19,6 +19,15 @@ from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Optional,
 
 VERSION = "1.0.0"
 _GIB = 1024.0 ** 3
+# A CPU delta is only a measurement of the box when the window between the two readings is long
+# enough not to be dominated by the sampler itself: starting a Python interpreter costs about a
+# tenth of a second of CPU, so a window of a few hundred milliseconds reads ~100% busy on an
+# idle box. Measured on this 1-vCPU host, four back-to-back ticks reported 100.0/100.0/91.7%
+# while the lifetime average at the same moment was 5.6%. systemd can bunch ticks like that:
+# `OnUnitActiveSec` is recomputed from the last *activation*, so a tick that outruns the
+# interval leaves the next elapse already in the past. Windows shorter than this floor fall back
+# to the lifetime average instead of reporting a number that is not about the machine.
+MIN_CPU_DELTA_WINDOW_S = 5.0
 
 MAC_PROBE = r'''echo "HOST=$(scutil --get ComputerName 2>/dev/null || hostname)"
 echo "MODEL=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
@@ -26,7 +35,13 @@ echo "CORES=$(sysctl -n hw.ncpu 2>/dev/null)"
 echo "TOTAL=$(sysctl -n hw.memsize 2>/dev/null)"
 echo "BOOTTIME=$(sysctl -n kern.boottime 2>/dev/null)"
 echo "LOAD=$(sysctl -n vm.loadavg 2>/dev/null)"
-echo "STATE=$(stat -f%Su /dev/console 2>/dev/null)"
+# Ground truth for the screen field. ``stat -f%Su /dev/console`` looked like the answer but is
+# not one: macOS keeps the logged-in user as the console owner while the screen is locked (the
+# login window only takes the console at logout), so the console owner reads "unlocked" for a
+# Mac that is locked. ``CGSSessionScreenIsLocked`` is the authoritative flag; it prints 1 only
+# when the screen really is locked (the key is present-but-No, or absent entirely, when it is
+# not), so the shell reduces it to that one digit for us.
+echo "LOCKED=$(ioreg -n Root -d1 | tr ',' '\n' | grep -m1 'CGSSessionScreenIsLocked' | grep -c 'Yes')"
 echo "SWAP=$(sysctl -n vm.swapusage 2>/dev/null)"
 echo "--- TOP ---"
 top -l 2 -n 0 -s 1 2>/dev/null
@@ -85,11 +100,21 @@ def read_cpu_times(proc_dir: str) -> CpuPair:
     raise ValueError("aggregate CPU line is missing")
 
 
-def cpu_busy_pct(current: CpuPair, previous: Optional[CpuPair] = None) -> float:
-    """Calculate CPU busy percentage, preferring an invocation-to-invocation delta."""
+def cpu_busy_pct(
+    current: CpuPair,
+    previous: Optional[CpuPair] = None,
+    window_s: Optional[float] = None,
+) -> float:
+    """Calculate CPU busy percentage, preferring a delta over a plausible window.
+
+    The delta is taken only when the caller can also say how long the window was and that
+    window is at least ``MIN_CPU_DELTA_WINDOW_S``. Without a trustworthy window the lifetime
+    average is the honest number — see the constant for what the short-window failure looks
+    like on a real box.
+    """
     total, idle = current
     use_total, use_idle = total, idle
-    if previous is not None:
+    if previous is not None and window_s is not None and window_s >= MIN_CPU_DELTA_WINDOW_S:
         delta_total = total - previous[0]
         delta_idle = idle - previous[1]
         if delta_total > 0 and 0 <= delta_idle <= delta_total:
@@ -156,6 +181,16 @@ def read_uptime(proc_dir: str) -> int:
         return max(0, int(time.monotonic()))
 
 
+def read_loadavg(proc_dir: str) -> Tuple[float, float, float]:
+    """Read the three load averages from proc, falling back to the host's own numbers."""
+    try:
+        with (Path(proc_dir) / "loadavg").open("r", encoding="utf-8") as handle:
+            fields = handle.read().split()
+        return float(fields[0]), float(fields[1]), float(fields[2])
+    except (OSError, ValueError, IndexError):
+        return os.getloadavg()
+
+
 def _cpu_cores(proc_dir: str) -> int:
     try:
         with (Path(proc_dir) / "stat").open("r", encoding="utf-8") as handle:
@@ -167,18 +202,37 @@ def _cpu_cores(proc_dir: str) -> int:
     return os.cpu_count() or 1
 
 
+def _previous_sample(previous: Optional[Mapping[str, Any]]) -> Tuple[Optional[CpuPair], Optional[int]]:
+    """Split a stored previous sample into its CPU pair and the epoch it was taken at.
+
+    A previous file without ``at`` (written before the window was recorded) yields no pair, so
+    the first tick after an upgrade reports the lifetime average rather than an unmeasurable
+    delta. Self-healing: the next tick writes a complete record.
+    """
+    if not previous:
+        return None, None
+    try:
+        pair = (int(previous["total"]), int(previous["idle"]))
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    taken = previous.get("at")
+    return pair, int(taken) if isinstance(taken, int) else None
+
+
 def sample_vps(
     proc_dir: str = "/proc",
-    previous: Optional[CpuPair] = None,
+    previous: Optional[Mapping[str, Any]] = None,
     now: Optional[int] = None,
     name: Optional[str] = None,
 ) -> Tuple[JsonObject, CpuPair]:
     """Take one local sample and return it with the CPU pair to persist."""
     epoch = int(time.time()) if now is None else int(now)
     pair = read_cpu_times(proc_dir)
+    previous_pair, previous_at = _previous_sample(previous)
+    window_s = None if previous_at is None else float(epoch - previous_at)
     memory, swap = memory_stats(read_meminfo(proc_dir))
     disk_usage = shutil.disk_usage("/")
-    load = os.getloadavg()
+    load = read_loadavg(proc_dir)
     uptime_s = read_uptime(proc_dir)
     # The hostname is plain (this box calls itself "vps"); --name lets the installer put the
     # tailnet name on the card instead, which is the name the reader typed in the address bar.
@@ -193,7 +247,7 @@ def sample_vps(
         "generated_at_epoch": epoch,
         "age_s": 0,
         "field": "fresh",
-        "cpu": {"cores": _cpu_cores(proc_dir), "busy_pct": cpu_busy_pct(pair, previous)},
+        "cpu": {"cores": _cpu_cores(proc_dir), "busy_pct": cpu_busy_pct(pair, previous_pair, window_s)},
         "memory": memory,
         "swap": swap,
         "disk": {
@@ -327,8 +381,9 @@ def parse_mac_probe(text: str) -> JsonObject:
             "15m": round(float(load_values[2]), 2),
         }
     boot_match = re.search(r"\bsec\s*=\s*(\d+)", scalars.get("BOOTTIME", ""))
-    console_user = scalars.get("STATE", "").strip()
-    locked_users = {"", "root", "loginwindow", "none"}
+    # Only the flag's "1" means locked; "0", an empty value and a missing line all mean the
+    # screen is not locked. See MAC_PROBE for why the console owner is not consulted.
+    screen = "locked" if scalars.get("LOCKED", "").strip() == "1" else "unlocked"
     swap_value = scalars.get("SWAP", "")
     return {
         "name": scalars.get("HOST") or None,
@@ -341,7 +396,7 @@ def parse_mac_probe(text: str) -> JsonObject:
         },
         "disk": _parse_mac_disk(sections["DF"]),
         "load": load,
-        "screen": "locked" if console_user.lower() in locked_users else "unlocked",
+        "screen": screen,
         "boot_time_epoch": int(boot_match.group(1)) if boot_match else None,
         "page_size": page_size,
     }
@@ -533,12 +588,13 @@ def _read_json(path: Path) -> Optional[JsonObject]:
         return None
 
 
-def _load_previous(path: Path) -> Optional[CpuPair]:
+def _load_previous(path: Path) -> Optional[JsonObject]:
+    """Read the stored previous CPU pair together with the epoch it was taken at."""
     value = _read_json(path)
     if value is None:
         return None
     try:
-        return int(value["total"]), int(value["idle"])
+        return {"total": int(value["total"]), "idle": int(value["idle"]), "at": int(value["at"])}
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -675,7 +731,9 @@ def run_tick(
         )
     assert_history(history)
     document = build_document(vps, history, mac, epoch, interval_s)
-    write_json_atomic(directory / "prev.json", {"total": pair[0], "idle": pair[1]})
+    # The tick time is stored with the counters: without it the next tick cannot tell a 15 s
+    # window from a 0.1 s one, and a bunched tick would report the sampler's own CPU.
+    write_json_atomic(directory / "prev.json", {"total": pair[0], "idle": pair[1], "at": epoch})
     write_json_atomic(directory / "history.json", history)
     # The served document carries no secret and must be readable by the web server through the
     # state directory's group, while the private state files are nobody's business but the

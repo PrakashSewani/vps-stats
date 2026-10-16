@@ -6,8 +6,14 @@ Documentation=https://github.com/PrakashSewani/vps-stats
 # 15 s is the resolution the page's 30-minute ring is labelled with, so the history and the
 # display agree. OnBootSec delays the first tick by 30 s so we do not probe the Mac the instant
 # the box comes up.
+#
+# OnUnitInactiveSec, not OnUnitActiveSec: the latter is relative to the last *activation*, so a
+# tick that ran longer than 15 s (a slow Mac probe) would find the next elapse already in the
+# past and fire again immediately, bunching two ticks into one CPU window. Relative to the last
+# *deactivation* means the timer re-arms when the tick is done, so the cadence is 15 s plus the
+# tick's own duration and two ticks never share a window.
 OnBootSec=30s
-OnUnitActiveSec=15s
+OnUnitInactiveSec=15s
 # AccuracySec=1s keeps that cadence honest. The default (1 min) lets systemd coalesce timer
 # wakeups, which would smear a 15 s interval into an unpredictably lumpy one.
 AccuracySec=1s

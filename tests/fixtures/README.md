@@ -9,7 +9,8 @@ asserted against numbers that actually came off the machines.
 | `proc_stat_b.txt` | hermes-vps | the same file **16 s later** - the pair is what makes the CPU delta deterministic |
 | `proc_meminfo.txt` | hermes-vps | `/proc/meminfo` |
 | `proc_loadavg.txt` | hermes-vps | `/proc/loadavg` |
-| `mac_probe_raw.txt` | Prakash's MacBook Air (M3, 16 GB) | one full probe response: `KEY=value` lines, then `top -l 2 -n 0 -s 1`, `vm_stat`, `df -k` |
+| `mac_probe_raw.txt` | Prakash's MacBook Air (M3, 16 GB) | one full probe response: `KEY=value` lines, then `top -l 2 -n 0 -s 1`, `vm_stat`, `df -k`. Recorded before the lock flag existed, so it has no `LOCKED=` line |
+| `mac_probe_locked.txt` | Prakash's MacBook Air (M3, 16 GB) | the same probe recorded while the screen was **locked**: `LOCKED=1` with the console still owned by the logged-in user, which is the state the old console-owner parse reported as `unlocked` |
 
 `mac_probe_raw.txt` is a single captured ssh response, so the Mac parser can be fed
 exactly what the real Mac sent - including the wide `'` in the hostname, which is there

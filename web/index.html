@@ -558,6 +558,15 @@
         return value === null || value === undefined || value === '' ? EM_DASH : String(value);
       }
 
+      // One convention for "how many minutes old": the card ("updated 6 minutes ago") and the
+      // banner ("6 min old") describe the same document, so they must not disagree on screen.
+      // Floors, never rounds — a countdown that rounds up claims more age than the clock shows.
+      function ageMinutes(ageSeconds) {
+        const age = finiteNumber(ageSeconds);
+        if (age === null) return null;
+        return Math.max(0, Math.floor(age / 60));
+      }
+
       function formatAge(ageSeconds) {
         const age = finiteNumber(ageSeconds);
         if (age === null) return 'updated ' + EM_DASH;
@@ -566,7 +575,7 @@
         if (rounded < 60) {
           return 'updated ' + formatInteger(rounded) + ' second' + (rounded === 1 ? '' : 's') + ' ago';
         }
-        const minutes = Math.floor(rounded / 60);
+        const minutes = ageMinutes(rounded);
         if (minutes < 60) {
           return 'updated ' + formatInteger(minutes) + ' minute' + (minutes === 1 ? '' : 's') + ' ago';
         }
@@ -918,7 +927,7 @@
         const age = documentAge();
         const stale = age === null || age >= VPS_STALE_AT_SECONDS;
         if (stale) {
-          const minutes = age === null ? null : Math.max(1, Math.round(age / 60));
+          const minutes = age === null ? null : Math.max(1, ageMinutes(age));
           banner.className = 'banner';
           banner.hidden = false;
           banner.textContent = minutes === null

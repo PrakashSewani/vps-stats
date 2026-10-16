@@ -128,6 +128,15 @@ fi
 
 # 3. ----------------------------------------------------------------- user and state dir
 step "Service user and state directory"
+# Create the group explicitly. `useradd --system` only gets a same-named group because the host's
+# /etc/login.defs says USERGROUPS_ENAB yes; where it says no, step 5's
+# `install -d -o vpsstats -g vpsstats` fails under `set -e` and the unit's Group= does not
+# resolve either. One line removes the hidden dependency on that default.
+if getent group vpsstats >/dev/null 2>&1; then
+  say "group vpsstats already exists"
+else
+  run groupadd --system vpsstats
+fi
 if id vpsstats >/dev/null 2>&1; then
   say "user vpsstats already exists"
 else
