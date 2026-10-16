@@ -7,19 +7,25 @@ rule 4. Keep exactly one phase `in progress`.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Requirements + stack selection: fill `docs/product.md`, choose the stack, record D-001 | in progress |
-| 1 | Scaffold: structure, checks, CI, release path — recorded in `docs/architecture.md` / `development.md` | not started |
-| 2 | Core behavior: the one workflow the tool exists for, end to end, with tests | not started |
-| 3 | Polish: README, `--help`, error messages, docs — the parts users judge first | not started |
-| 4 | Release: main-merge release verified; required tag, artifact, or deployment path checked from a clean environment | not started |
+| 0 | Requirements + stack selection: fill `docs/product.md`, choose the stack, record D-001 | done |
+| 1 | Scaffold: structure, checks, units, deploy scripts, release path — recorded in `docs/architecture.md` / `development.md` | done |
+| 2 | Core behavior: exporter tick, bounded ring, Mac probe, page, staleness — end to end, with tests | done |
+| 3 | Polish: README, error messages, docs — the parts users judge first | in progress |
+| 4 | Release: install and smoke-verify on the box; deployment checked from a clean environment | not started |
 
 ## Current handoff
 
-**Phase:** 0 — requirements and stack selection remain pending; the generated-project branch and
-release contract is recorded in D-002.
-
-**Next action:** fill in `docs/product.md` for a concrete project and run `project-bootstrap`; it
-will apply the `dev`-default branch model and add the stack-specific release-on-`main` workflow.
+- **Phase:** 3 — polish; documentation (README and `docs/`) is the work in progress and everything
+  before it has landed.
+- **Done this session:** rewrote `README.md`; filled `docs/product.md`, `docs/architecture.md` and
+  `docs/development.md`; recorded D-001 (stack) and D-003 (tailnet-only serving) and updated
+  `docs/status.md`; corrected the template-rename wording in the skills and `CHANGELOG.md`.
+- **Verified:** `python3 tests/test_exporter.py` (standard-library `unittest` suite, exit 0) and
+  `bash -n deploy/install.sh && bash -n deploy/smoke.sh` (script syntax). The deploy path itself
+  has not been run on a box: no install and no smoke run has happened.
+- **Blocked by:** nothing.
+- **Next action:** install on the box with `sudo deploy/install.sh`, then run
+  `sudo deploy/smoke.sh` and confirm it exits 0.
 
 ---
 

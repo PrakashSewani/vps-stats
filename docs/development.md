@@ -1,28 +1,50 @@
 # Development
 
-> Empty until the stack is chosen. The `project-bootstrap` skill fills this in with the real
-> commands — and only commands that were actually run belong here.
-
 ## Prerequisites
 
-(What a new contributor installs first.)
+- A checkout of this repository.
+- Python 3.9 or newer. The exporter uses `from __future__ import annotations` with the
+  `typing` generics (`Dict`, `Tuple`, `Optional`) and `shutil.disk_usage`, and the installer
+  refuses anything older.
+- A tailnet (and a running `tailscaled`) only if you want to run the deployed path; the unit
+  tests need nothing beyond the checkout.
 
 ## Setup
 
-(Clone, install, configure env — the exact commands.)
+Clone the repository and start. There is nothing to install: the exporter is Python 3 standard
+library only, so there is no virtualenv, no lockfile and no package manager step.
+
+```bash
+git clone https://github.com/PrakashSewani/vps-stats.git
+cd vps-stats
+```
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| (check) | typecheck + lint + tests — the one command that must pass before anything is "done" |
-| (test) | — |
-| (build) | — |
-| (run / dev) | — |
+| `python3 tests/test_exporter.py` | The check: runs the stdlib `unittest` suite and exits 0 on success. |
+| `bash -n deploy/install.sh && bash -n deploy/smoke.sh` | Syntax check for the two shell scripts. |
+| `python3 exporter/stats.py --state-dir /tmp/vps-stats-test --no-mac --print --json` | Local dry run against a throwaway state directory; prints the whole document. |
+| `python3 exporter/stats.py --version` | Prints `stats.py <version>` and exits 0. |
+| `sudo deploy/install.sh --dry-run` | Preview the install on the target box, changing nothing; works without root. |
+
+The installer and the smoke test are run as root **on the target box**, not on a laptop — they
+install systemd units, an nginx site and a state directory. The unit tests never touch the
+network: the Mac probe is exercised against the recorded capture in `tests/fixtures/`.
 
 ## Environment
 
-(Env vars, where they come from, what happens when they are missing.)
+| Variable | Used by | Default |
+|---|---|---|
+| `VPS_STATS_STATE_DIR` | exporter `--state-dir` | `/var/lib/vps-stats` |
+| `VPS_STATS_PROC_DIR` | exporter `--proc-dir` | `/proc` |
+| `VPS_STATS_MAC_HOST` | exporter `--mac-host` | `mac` |
+| `VPS_STATS_NAME` | exporter card name | the short hostname |
+| `HOME` | ssh config lookup for the Mac probe | set to `/var/lib/vps-stats` by the unit |
+
+A missing variable falls back to the default in the table; the matching command-line flag wins
+over the variable.
 
 ## Branches and pull requests
 
@@ -39,14 +61,17 @@ truth and changelog.
 
 ## Releases and deploys
 
-Every merge to `main` is a release. The release workflow runs only after changes reach `main`,
-validates the declared version, and automatically publishes or deploys. It creates a version tag
-on the merged `main` commit only when required by the selected ecosystem. Changes merged into
-`dev` do not run release workflows. The stack-specific workflow and commands are added during
-bootstrap.
+This repository publishes no artifact. A merge to `main` changes nothing by itself: there is no
+package to push, no binary to upload and no release workflow to run. Deployment is manual and
+happens on the box — check out the merged revision and run `sudo deploy/install.sh` there, then
+verify with `sudo deploy/smoke.sh`.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| — | — |
+| A card stuck at `STALE — exporter silent` | `systemctl status vps-stats.timer` (armed?) then `systemctl status vps-stats.service` and `journalctl -u vps-stats.service -n 30`. |
+| The page is unreachable | Check nginx listens on `127.0.0.1:8080` (`ss -ltn`), then `tailscale serve status`. |
+| The Mac card is dark while the laptop sleeps | Expected — a Mac that cannot be reached is reported `asleep`, not stale numbers. |
+| `/api/stats` returns `403` | The nginx worker cannot read the state file: check the state directory is setgid `2750` owned `vpsstats:www-data` and `stats.json` is `0640`. |
+| `tailscale serve` failed during install | Enable Serve for the tailnet in the Tailscale admin console, then re-run `tailscale serve --bg --http=80 http://127.0.0.1:8080`. |
