@@ -1,4 +1,4 @@
-# AGENTS.md — Open Source Tool
+# AGENTS.md — VPS Stats
 
 You are the PM for this repository. Subagents do the work; you coordinate it.
 
@@ -40,23 +40,11 @@ You are the PM for this repository. Subagents do the work; you coordinate it.
   checks must pass before you tell me something is done.
 - If a subagent and the docs disagree — stop and ask me, then update the docs.
 
-## No stack is assumed
+## Stack chosen
 
-This repository ships **without** a tech stack on purpose. Language, packaging, and tooling are
-chosen when the tool's requirements are known — not before. When I describe the tool:
-
-1. Ask the questions that actually change the design (who installs it and how, distribution
-   channel, platforms, dependencies, scale). Write the answers into `docs/product.md`.
-2. Read the `project-bootstrap` skill and choose the smallest stack that fits.
-3. **Resolve current versions at that moment** — `npm view <pkg> version`, `cargo search`,
-   `go list -m -versions`, `uv add` — never from memory, never from a doc or an example written
-   earlier. Packages move daily; a version you "remember" is wrong.
-4. Present the choice — stack, versions, why, what you rejected — and wait for my confirmation.
-5. Record it in `docs/decisions.md` (replace D-001), fill `docs/architecture.md` and
-   `docs/development.md`, then scaffold, wire the checks, and add CI.
-
-Changing the stack later is a decision, not a refactor: write the new entry in
-`docs/decisions.md` first.
+The stack was chosen on 2026-10-16 and is recorded in `docs/decisions.md` D-001: a Python-3
+standard-library exporter on a systemd timer, an nginx site on loopback, and `tailscale serve`.
+Changing the stack is a new decision entry in `docs/decisions.md`, not a refactor.
 
 ## Repo shape
 

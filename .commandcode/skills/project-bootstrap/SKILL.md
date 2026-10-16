@@ -14,9 +14,9 @@ stack, recorded in the docs, scaffolded and verified. Do not write product code 
 
 ## Step 0 — Rename the template (once)
 
-If the repo still says `template-open-source-tool` / "Open Source Tool" anywhere (README,
-AGENTS.md, docs, skills), fix that before anything else. The slug is the repository name; the
-title is the human name for the tool.
+The rename is already done in this repository: the slug is `vps-stats`, the title is `VPS Stats`,
+and it is recorded in `docs/decisions.md` D-001. This step only applies to freshly generated
+repositories.
 
 ```bash
 node scripts/init.mjs --name <repo-slug> --title "<Tool Name>"
