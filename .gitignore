@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+vendor/
+
+# Build output
+dist/
+build/
+out/
+target/
+.next/
+.output/
+.wxt/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Caches, logs, coverage
+*.log
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
